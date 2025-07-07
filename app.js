@@ -7,6 +7,10 @@ require('dotenv').config();
 
 const app = express();
 
+// Body parsers PRIMEIRO!
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
+
 // Middlewares de segurança
 app.use(helmet());
 app.use(cors({
@@ -20,10 +24,6 @@ const limiter = rateLimit({
   max: 100 // máximo 100 requests por IP
 });
 app.use(limiter);
-
-// Middlewares
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
 
 // Conexão com MongoDB - VERSÃO CORRIGIDA
 const connectDB = async () => {
