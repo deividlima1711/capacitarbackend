@@ -6,6 +6,7 @@ const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
 const app = express();
+app.set('trust proxy', 1); // Necessário para ambientes com proxy (Railway, Vercel, Heroku, etc)
 
 // Body parsers PRIMEIRO!
 app.use(express.json({ limit: '10mb' }));
