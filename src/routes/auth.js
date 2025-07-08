@@ -12,13 +12,23 @@ router.post('/login', async (req, res) => {
 
     // Validação básica
     if (!username || !password) {
+      console.log('❌ Login: Usuário ou senha não fornecidos');
       return res.status(400).json({ error: 'Usuário e senha são obrigatórios' });
     }
 
-    // Buscar usuário
+    // Verificar se JWT_SECRET está configurado
+    if (!process.env.JWT_SECRET) {
+      console.error('❌ Login: JWT_SECRET não configurado');
+      return res.status(500).json({ error: 'Erro de configuração do servidor' });
+    }
+
+    console.log(`🔍 Login: Tentativa de login para usuário: ${username}`);
+
+    // Buscar usuário (case insensitive)
     const user = await User.findOne({ username: username.toLowerCase() });
     
     if (!user) {
+      console.log(`❌ Login: Usuário ${username} não encontrado`);
       return res.status(401).json({ error: 'Credenciais inválidas' });
     }
 
@@ -26,11 +36,13 @@ router.post('/login', async (req, res) => {
     const isMatch = await user.comparePassword(password);
     
     if (!isMatch) {
+      console.log(`❌ Login: Senha incorreta para usuário ${username}`);
       return res.status(401).json({ error: 'Credenciais inválidas' });
     }
 
     // Verificar se usuário está ativo
     if (!user.isActive) {
+      console.log(`❌ Login: Usuário ${username} está inativo`);
       return res.status(401).json({ error: 'Usuário inativo' });
     }
 
@@ -38,31 +50,57 @@ router.post('/login', async (req, res) => {
     user.lastLogin = new Date();
     await user.save();
 
-    // Gerar token JWT
+    // Payload do JWT com dados essenciais
+    const payload = {
+      userId: user._id.toString(),
+      username: user.username,
+      role: user.role,
+      iat: Math.floor(Date.now() / 1000) // issued at
+    };
+
+    // Gerar token JWT com configurações robustas
     const token = jwt.sign(
-      { 
-        userId: user._id,
-        username: user.username,
-        role: user.role
-      },
+      payload,
       process.env.JWT_SECRET,
-      { expiresIn: '24h' }
+      { 
+        expiresIn: '1h', // Reduzido para 1 hora conforme boas práticas
+        algorithm: 'HS256',
+        issuer: 'processflow-backend',
+        audience: 'processflow-frontend'
+      }
     );
+
+    // Verificar se o token foi gerado corretamente
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      console.log(`✅ Login: Token gerado e verificado com sucesso para ${username}`);
+      console.log(`🔍 Token info: userId=${decoded.userId}, exp=${new Date(decoded.exp * 1000).toISOString()}`);
+    } catch (verifyError) {
+      console.error('❌ Login: Erro na verificação do token gerado:', verifyError.message);
+      return res.status(500).json({ error: 'Erro na geração do token' });
+    }
+
+    // Dados do usuário para resposta (sem senha)
+    const userData = {
+      id: user._id,
+      username: user.username,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      department: user.department,
+      isActive: user.isActive,
+      lastLogin: user.lastLogin
+    };
+
+    console.log(`✅ Login: Sucesso para usuário ${username} (${user.role})`);
 
     res.json({
       token,
-      user: {
-        id: user._id,
-        username: user.username,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        department: user.department
-      }
+      user: userData
     });
 
   } catch (error) {
-    console.error('Erro no login:', error.message);
+    console.error('❌ Login: Erro interno:', error.message);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
@@ -70,6 +108,8 @@ router.post('/login', async (req, res) => {
 // Verificar token
 router.get('/verify', auth, async (req, res) => {
   try {
+    console.log(`✅ Verify: Token válido para usuário ${req.user.username}`);
+    
     res.json({
       valid: true,
       user: {
@@ -78,11 +118,13 @@ router.get('/verify', auth, async (req, res) => {
         name: req.user.name,
         email: req.user.email,
         role: req.user.role,
-        department: req.user.department
+        department: req.user.department,
+        isActive: req.user.isActive,
+        lastLogin: req.user.lastLogin
       }
     });
   } catch (error) {
-    console.error('Erro na verificação:', error.message);
+    console.error('❌ Verify: Erro na verificação:', error.message);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
@@ -90,10 +132,11 @@ router.get('/verify', auth, async (req, res) => {
 // Logout (invalidar token no frontend)
 router.post('/logout', auth, async (req, res) => {
   try {
+    console.log(`✅ Logout: Usuário ${req.user.username} fez logout`);
     // Em uma implementação mais robusta, você poderia manter uma blacklist de tokens
     res.json({ message: 'Logout realizado com sucesso' });
   } catch (error) {
-    console.error('Erro no logout:', error.message);
+    console.error('❌ Logout: Erro no logout:', error.message);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
@@ -117,6 +160,7 @@ router.put('/change-password', auth, async (req, res) => {
     const isMatch = await user.comparePassword(currentPassword);
     
     if (!isMatch) {
+      console.log(`❌ ChangePassword: Senha atual incorreta para ${req.user.username}`);
       return res.status(400).json({ error: 'Senha atual incorreta' });
     }
 
@@ -124,11 +168,49 @@ router.put('/change-password', auth, async (req, res) => {
     user.password = newPassword;
     await user.save();
 
+    console.log(`✅ ChangePassword: Senha alterada para usuário ${req.user.username}`);
     res.json({ message: 'Senha alterada com sucesso' });
 
   } catch (error) {
-    console.error('Erro ao alterar senha:', error.message);
+    console.error('❌ ChangePassword: Erro ao alterar senha:', error.message);
     res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Endpoint para testar JWT (debugging)
+router.get('/test-jwt', (req, res) => {
+  try {
+    if (!process.env.JWT_SECRET) {
+      return res.status(500).json({ error: 'JWT_SECRET não configurado' });
+    }
+
+    // Gerar token de teste
+    const testPayload = {
+      userId: 'test-user-id',
+      username: 'test-user',
+      role: 'user',
+      iat: Math.floor(Date.now() / 1000)
+    };
+
+    const testToken = jwt.sign(testPayload, process.env.JWT_SECRET, { expiresIn: '1h' });
+    
+    // Verificar token de teste
+    const decoded = jwt.verify(testToken, process.env.JWT_SECRET);
+    
+    res.json({
+      message: 'JWT funcionando corretamente',
+      tokenGenerated: true,
+      tokenVerified: true,
+      payload: decoded,
+      jwtSecretConfigured: true
+    });
+    
+  } catch (error) {
+    res.status(500).json({
+      message: 'Erro no JWT',
+      error: error.message,
+      jwtSecretConfigured: !!process.env.JWT_SECRET
+    });
   }
 });
 
