@@ -17,8 +17,11 @@ async function ensureAdminUser() {
     await User.create({
       username: adminUsername,
       password: passwordHash,
-      role: 'admin', // ajuste conforme seu schema
-      // ...adicione outros campos obrigatórios se necessário
+      role: 'admin',
+      name: 'Administrador',
+      email: 'admin@processflow.com',
+      department: 'TI',
+      isActive: true
     });
     console.log('Usuário admin criado.');
   }
