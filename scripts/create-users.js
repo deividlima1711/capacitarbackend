@@ -2,23 +2,11 @@ const bcrypt = require('bcryptjs');
 const mongoose = require('mongoose');
 require('dotenv').config();
 
+// Importar o modelo User existente
+const User = require('../src/models/User');
+
 // Conectar ao MongoDB
 mongoose.connect(process.env.MONGODB_URI);
-
-// Schema do usuário
-const userSchema = new mongoose.Schema({
-  username: String,
-  password: String,
-  name: String,
-  email: String,
-  role: String,
-  department: String,
-  isActive: Boolean,
-  createdAt: Date,
-  updatedAt: Date
-});
-
-const User = mongoose.model('User', userSchema);
 
 // Usuários para criar
 const usersToCreate = [
