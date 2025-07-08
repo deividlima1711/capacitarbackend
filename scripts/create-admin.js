@@ -2,27 +2,20 @@ const bcrypt = require('bcryptjs');
 const mongoose = require('mongoose');
 require('dotenv').config();
 
-// Conectar ao MongoDB
-mongoose.connect(process.env.MONGODB_URI);
-
-// Schema do usuário
-const userSchema = new mongoose.Schema({
-  username: String,
-  password: String,
-  name: String,
-  email: String,
-  role: String,
-  department: String,
-  isActive: Boolean,
-  createdAt: Date,
-  updatedAt: Date
-});
-
-const User = mongoose.model('User', userSchema);
+// Importar o modelo User existente
+const User = require('../src/models/User');
 
 async function createAdmin() {
   try {
     console.log('🔄 Conectando ao MongoDB...');
+    
+    // Conectar ao MongoDB com timeout
+    await mongoose.connect(process.env.MONGODB_URI, {
+      serverSelectionTimeoutMS: 10000, // 10 segundos timeout
+      socketTimeoutMS: 45000,
+    });
+    
+    console.log('✅ Conectado ao MongoDB com sucesso!');
     
     // Verificar se admin já existe
     const existingAdmin = await User.findOne({ username: 'admin' });
@@ -67,6 +60,14 @@ async function createAdmin() {
   } catch (error) {
     console.error('❌ Erro ao criar admin:', error.message);
     
+    // Erros específicos de conexão
+    if (error.name === 'MongoServerSelectionError') {
+      console.error('💡 Erro de conexão: Não foi possível conectar ao MongoDB');
+      console.error('   - Verifique se a string MONGODB_URI está correta');
+      console.error('   - Verifique se o MongoDB Atlas está configurado');
+      console.error('   - Verifique sua conexão com a internet');
+    }
+    
     if (error.code === 11000) {
       console.error('💡 Erro de duplicata - usuário já existe');
     }
@@ -77,7 +78,13 @@ async function createAdmin() {
     
   } finally {
     console.log('🔌 Desconectando do MongoDB...');
-    mongoose.disconnect();
+    try {
+      await mongoose.disconnect();
+      console.log('✅ Desconectado com sucesso');
+    } catch (disconnectError) {
+      console.error('❌ Erro ao desconectar:', disconnectError.message);
+    }
+    process.exit(0);
   }
 }
 
