@@ -61,8 +61,8 @@ const connectDB = async () => {
     console.log(`✅ Conectado ao MongoDB: ${conn.connection.host}`);
     console.log(`📊 Database: ${conn.connection.name}`);
     
-    // Criar usuário admin se não existir - VERSÃO CORRIGIDA
-    await createAdminUser();
+    // Garantir usuário admin com senha correta
+    await ensureAdminUser();
     
     return conn;
     
@@ -100,90 +100,7 @@ const connectDB = async () => {
   }
 };
 
-// Função para criar usuário admin - VERSÃO CORRIGIDA (SEM DOUBLE HASHING)
-const createAdminUser = async () => {
-  try {
-    // Verificar se mongoose está conectado
-    if (mongoose.connection.readyState !== 1) {
-      console.warn('⚠️ MongoDB não conectado, pulando criação de usuário admin');
-      return;
-    }
-
-    const User = require('./src/models/User');
-    
-    console.log('🔍 Verificando se usuário admin existe...');
-    const adminExists = await User.findOne({ username: 'admin' });
-    
-    if (!adminExists) {
-      console.log('🔄 Criando usuário admin...');
-      
-      // ✅ CORREÇÃO: Passar senha limpa - o middleware do modelo fará o hash automaticamente
-      const admin = new User({
-        username: 'admin',
-        password: 'Lima12345', // ✅ Senha limpa - middleware pre('save') fará o hash
-        role: 'admin',
-        name: 'Administrador',
-        email: 'admin@processflow.com',
-        department: 'TI',
-        isActive: true
-      });
-      
-      // Salvar usuário (middleware pre('save') será executado automaticamente)
-      await admin.save();
-      
-      console.log('✅ Usuário admin criado com sucesso!');
-      console.log('👤 Credenciais de login:');
-      console.log('   Usuário: admin');
-      console.log('   Senha: Lima12345');
-      console.log('   Role: admin');
-      
-      // Verificar se foi salvo corretamente
-      const savedAdmin = await User.findOne({ username: 'admin' });
-      if (savedAdmin) {
-        console.log('✅ Verificação: Usuário admin salvo no banco de dados');
-        console.log(`📧 Email: ${savedAdmin.email}`);
-        console.log(`🏢 Departamento: ${savedAdmin.department}`);
-        console.log(`🔐 Senha hasheada: ${savedAdmin.password ? 'Sim' : 'Não'}`);
-      }
-      
-    } else {
-      console.log('✅ Usuário admin já existe');
-      console.log(`📧 Email: ${adminExists.email}`);
-      console.log(`🏢 Departamento: ${adminExists.department}`);
-      console.log(`🔐 Ativo: ${adminExists.isActive ? 'Sim' : 'Não'}`);
-      console.log('👤 Credenciais de login: admin / Lima12345');
-    }
-    
-  } catch (error) {
-    console.error('❌ Erro ao criar usuário admin:', error.message);
-    console.error('📋 Detalhes do erro:', error);
-    
-    // Se for erro de conexão, não é crítico
-    if (error.name === 'MongoNetworkError') {
-      console.warn('⚠️ Erro de rede ao criar admin, tentará novamente na próxima inicialização');
-    } else if (error.code === 11000) {
-      console.warn('⚠️ Usuário admin já existe (erro de duplicação)');
-    } else {
-      console.error('❌ Erro crítico na criação do admin:', error.message);
-    }
-  }
-};
-
-// Função para forçar recriação do usuário admin (para debugging)
-const recreateAdminUser = async () => {
-  try {
-    const User = require('./src/models/User');
-    
-    console.log('🔄 Removendo usuário admin existente...');
-    await User.deleteOne({ username: 'admin' });
-    
-    console.log('🔄 Criando novo usuário admin...');
-    await createAdminUser();
-    
-  } catch (error) {
-    console.error('❌ Erro ao recriar usuário admin:', error.message);
-  }
-};
+const ensureAdminUser = require('./src/models/ensureAdminUser');
 
 // Middleware para verificar conexão MongoDB
 const checkMongoConnection = (req, res, next) => {
@@ -233,46 +150,6 @@ app.get('/health', (req, res) => {
     memory: process.memoryUsage(),
     timestamp: new Date().toISOString()
   });
-});
-
-// Rota para recriar usuário admin (apenas para debugging)
-app.post('/api/admin/recreate', async (req, res) => {
-  try {
-    if (process.env.NODE_ENV === 'production') {
-      return res.status(403).json({ error: 'Operação não permitida em produção' });
-    }
-    
-    await recreateAdminUser();
-    res.json({ message: 'Usuário admin recriado com sucesso' });
-  } catch (error) {
-    res.status(500).json({ error: 'Erro ao recriar usuário admin', details: error.message });
-  }
-});
-
-// Rota para verificar usuário admin
-app.get('/api/admin/check', async (req, res) => {
-  try {
-    const User = require('./src/models/User');
-    const admin = await User.findOne({ username: 'admin' }).select('-password');
-    
-    if (admin) {
-      res.json({
-        exists: true,
-        user: admin,
-        credentials: {
-          username: 'admin',
-          password: 'Lima12345'
-        }
-      });
-    } else {
-      res.json({
-        exists: false,
-        message: 'Usuário admin não encontrado'
-      });
-    }
-  } catch (error) {
-    res.status(500).json({ error: 'Erro ao verificar usuário admin', details: error.message });
-  }
 });
 
 // Importar e usar rotas - COM VERIFICAÇÃO DE CONEXÃO
