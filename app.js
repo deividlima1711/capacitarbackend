@@ -15,7 +15,7 @@ app.use(express.urlencoded({ extended: true }));
 // Middlewares de segurança
 app.use(helmet());
 app.use(cors({
-  origin: '*',
+  origin: process.env.FRONTEND_URL || 'https://processoscapacitar-1p3e1suuf-deivid-limas-projects-e4c0ed5f.vercel.app',
   credentials: true
 }));
 
