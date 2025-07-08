@@ -319,7 +319,10 @@ const startServer = async () => {
   try {
     // Tentar conectar ao MongoDB
     await connectDB();
-    
+
+    // Garantir admin com senha correta
+    await ensureAdminUser();
+
     // Iniciar servidor independente da conexão MongoDB
     const server = app.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Servidor rodando na porta ${PORT}`);
