@@ -79,6 +79,9 @@ router.get('/:id', auth, async (req, res) => {
 // Criar novo usuário (apenas admin)
 router.post('/', adminAuth, async (req, res) => {
   try {
+    console.log('📝 Criando novo usuário');
+    console.log('📋 Body:', req.body);
+    
     const {
       username,
       password,
@@ -88,34 +91,54 @@ router.post('/', adminAuth, async (req, res) => {
       department
     } = req.body;
 
+    // Validação mais robusta
     if (!username || !password || !name || !email) {
-      return res.status(400).json({ error: 'Campos obrigatórios: username, password, name, email' });
+      console.log('❌ Campos obrigatórios faltando');
+      return res.status(400).json({ 
+        error: 'Campos obrigatórios: username, password, name, email',
+        received: {
+          username: !!username,
+          password: !!password,
+          name: !!name,
+          email: !!email
+        }
+      });
     }
 
     // Verificar se username já existe
     const existingUser = await User.findOne({ 
       $or: [
-        { username: username.toLowerCase() },
-        { email: email.toLowerCase() }
+        { username: { $regex: new RegExp(`^${username}$`, 'i') } },
+        { email: { $regex: new RegExp(`^${email}$`, 'i') } }
       ]
     });
 
     if (existingUser) {
+      console.log(`❌ Username ou email já existe: ${username} / ${email}`);
       return res.status(400).json({ error: 'Username ou email já existe' });
     }
+
+    console.log(`✅ Criando usuário: ${username}`);
 
     const user = new User({
       username: username.toLowerCase(),
       password,
       name,
       email: email.toLowerCase(),
-      role,
-      department
+      role: role || 'user',
+      department: department || 'Geral',
+      isActive: true
     });
 
     await user.save();
 
-    res.status(201).json(user);
+    console.log(`✅ Usuário criado com sucesso: ${user.username}`);
+
+    // Remover senha da resposta
+    const userResponse = user.toObject();
+    delete userResponse.password;
+
+    res.status(201).json(userResponse);
 
   } catch (error) {
     console.error('Erro ao criar usuário:', error.message);
