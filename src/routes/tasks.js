@@ -82,6 +82,10 @@ router.get('/:id', auth, async (req, res) => {
 // Criar nova tarefa
 router.post('/', auth, async (req, res) => {
   try {
+    console.log('📝 Criando nova tarefa');
+    console.log('📋 Body:', req.body);
+    console.log('👤 User:', req.user?.username);
+    
     const {
       title,
       description,
@@ -95,35 +99,54 @@ router.post('/', auth, async (req, res) => {
       checklist
     } = req.body;
 
-    if (!title || !assignedTo || !processId) {
-      return res.status(400).json({ error: 'Título, responsável e processo são obrigatórios' });
+    // Validação mais robusta
+    if (!title || !assignedTo) {
+      console.log('❌ Campos obrigatórios faltando');
+      return res.status(400).json({ 
+        error: 'Título e responsável são obrigatórios',
+        received: {
+          title: !!title,
+          assignedTo: !!assignedTo,
+          process: !!processId
+        }
+      });
     }
 
-    // Verificar se o processo existe
-    const process = await Process.findById(processId);
-    if (!process) {
-      return res.status(404).json({ error: 'Processo não encontrado' });
+    // Verificar se o processo existe (se foi fornecido)
+    if (processId) {
+      const process = await Process.findById(processId);
+      if (!process) {
+        console.log(`❌ Processo não encontrado: ${processId}`);
+        return res.status(404).json({ error: 'Processo não encontrado' });
+      }
     }
+
+    console.log(`✅ Criando tarefa: ${title}`);
 
     const task = new Task({
       title,
       description,
-      status,
-      priority,
+      status: status || 'PENDENTE',
+      priority: priority || 'MEDIA',
       assignedTo,
       process: processId,
       dueDate,
-      estimatedHours,
-      tags,
-      checklist,
-      createdBy: req.user._id
+      estimatedHours: estimatedHours || 0,
+      tags: tags || [],
+      checklist: checklist || [],
+      createdBy: req.user._id,
+      progress: 0
     });
 
     await task.save();
     
     await task.populate('assignedTo', 'name username email');
-    await task.populate('process', 'title status');
+    if (processId) {
+      await task.populate('process', 'title status');
+    }
     await task.populate('createdBy', 'name username');
+
+    console.log(`✅ Tarefa criada com sucesso: ${task.title}`);
 
     res.status(201).json(task);
 
