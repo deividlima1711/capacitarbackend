@@ -13,21 +13,45 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Middlewares de segurança
-app.use(helmet());
+app.use(helmet({
+  crossOriginEmbedderPolicy: false,
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+    },
+  },
+}));
+
 app.use(cors({
   origin: [
     process.env.FRONTEND_URL,
     'https://processoscapacitar.vercel.app',
     'https://processoscapacitar-1p3e1suuf-deivid-limas-projects-e4c0ed5f.vercel.app',
-    'http://localhost:3000' // Para desenvolvimento
+    'http://localhost:3000', // Para desenvolvimento
+    'http://localhost:3001' // Para desenvolvimento
   ].filter(Boolean),
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
-// Rate limiting
+// Rate limiting mais flexível
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 100 // máximo 100 requests por IP
+  max: 200, // aumentado para 200 requests por IP
+  message: {
+    error: 'Muitas requisições do mesmo IP',
+    retryAfter: '15 minutos'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => {
+    // Pular rate limiting para algumas rotas importantes
+    return req.path === '/health' || req.path === '/';
+  }
 });
 app.use(limiter);
 
@@ -159,6 +183,20 @@ const checkMongoConnection = (req, res, next) => {
   next();
 };
 
+// Middleware para logging das requisições
+const logRequests = (req, res, next) => {
+  console.log(`📝 ${req.method} ${req.path} - IP: ${req.ip}`);
+  if (req.method === 'POST' || req.method === 'PUT') {
+    console.log('📋 Body:', JSON.stringify(req.body, null, 2));
+  }
+  next();
+};
+
+// Aplicar logging em desenvolvimento
+if (process.env.NODE_ENV === 'development') {
+  app.use(logRequests);
+}
+
 // Rotas
 app.get('/', (req, res) => {
   const mongoStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
@@ -174,6 +212,24 @@ app.get('/', (req, res) => {
       username: 'admin',
       password: 'Lima12345',
       note: 'Use essas credenciais para fazer login'
+    }
+  });
+});
+
+// Debug route para testar se o backend está funcionando
+app.get('/debug', (req, res) => {
+  res.json({
+    message: 'Backend funcionando',
+    timestamp: new Date().toISOString(),
+    headers: req.headers,
+    ip: req.ip,
+    method: req.method,
+    url: req.url,
+    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    env: {
+      NODE_ENV: process.env.NODE_ENV,
+      JWT_SECRET: !!process.env.JWT_SECRET,
+      MONGODB_URI: !!process.env.MONGODB_URI
     }
   });
 });
@@ -206,7 +262,9 @@ app.use('/api/teams', checkMongoConnection, require('./src/routes/teams'));
 
 // Middleware de erro global - MELHORADO
 app.use((err, req, res, next) => {
-  console.error('❌ Erro:', err.stack);
+  console.error('❌ Erro Global:', err.stack);
+  console.error('📍 Rota:', req.method, req.path);
+  console.error('📋 Body:', req.body);
   
   // Erros específicos do MongoDB
   if (err.name === 'MongoNetworkError') {
@@ -217,15 +275,49 @@ app.use((err, req, res, next) => {
   }
   
   if (err.name === 'ValidationError') {
+    const errors = Object.values(err.errors).map(e => e.message);
     return res.status(400).json({ 
       error: 'Dados inválidos',
-      message: err.message
+      message: errors.join(', '),
+      details: err.errors
     });
   }
   
+  if (err.name === 'CastError') {
+    return res.status(400).json({ 
+      error: 'ID inválido',
+      message: `ID fornecido não é válido: ${err.value}`
+    });
+  }
+  
+  if (err.code === 11000) {
+    const field = Object.keys(err.keyPattern)[0];
+    return res.status(400).json({ 
+      error: 'Dados duplicados',
+      message: `${field} já existe`
+    });
+  }
+  
+  // Erro de autenticação JWT
+  if (err.name === 'JsonWebTokenError') {
+    return res.status(401).json({ 
+      error: 'Token inválido',
+      message: 'Token de autenticação inválido'
+    });
+  }
+  
+  if (err.name === 'TokenExpiredError') {
+    return res.status(401).json({ 
+      error: 'Token expirado',
+      message: 'Token de autenticação expirado'
+    });
+  }
+  
+  // Erro genérico
   res.status(500).json({ 
     error: 'Erro interno do servidor',
-    message: process.env.NODE_ENV === 'development' ? err.message : 'Algo deu errado'
+    message: process.env.NODE_ENV === 'development' ? err.message : 'Algo deu errado',
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
   });
 });
 
