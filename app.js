@@ -66,8 +66,8 @@ const connectDB = async () => {
     console.log(`✅ Conectado ao MongoDB: ${conn.connection.host}`);
     console.log(`📊 Database: ${conn.connection.name}`);
     
-    // Garantir usuário admin com senha correta
-    await ensureAdminUser();
+    // Criar usuário admin se não existir
+    await createAdminUser();
     
     return conn;
     
@@ -105,7 +105,47 @@ const connectDB = async () => {
   }
 };
 
-const ensureAdminUser = require('./src/models/ensureAdminUser');
+// Função para criar usuário admin - VERSÃO MELHORADA
+const createAdminUser = async () => {
+  try {
+    // Verificar se mongoose está conectado
+    if (mongoose.connection.readyState !== 1) {
+      console.warn('⚠️ MongoDB não conectado, pulando criação de usuário admin');
+      return;
+    }
+
+    const User = require('./src/models/User');
+    const bcrypt = require('bcryptjs');
+    
+    const adminExists = await User.findOne({ username: 'admin' });
+    
+    if (!adminExists) {
+      const hashedPassword = await bcrypt.hash('Lima12345', 12);
+      
+      const admin = new User({
+        username: 'admin',
+        password: hashedPassword,
+        role: 'admin',
+        name: 'Administrador',
+        email: 'admin@processflow.com',
+        department: 'TI'
+      });
+      
+      await admin.save();
+      console.log('✅ Usuário admin criado com sucesso');
+      console.log('👤 Credenciais: admin / Lima12345');
+    } else {
+      console.log('✅ Usuário admin já existe');
+    }
+  } catch (error) {
+    console.error('❌ Erro ao criar usuário admin:', error.message);
+    
+    // Se for erro de conexão, não é crítico
+    if (error.name === 'MongoNetworkError') {
+      console.warn('⚠️ Erro de rede ao criar admin, tentará novamente na próxima inicialização');
+    }
+  }
+};
 
 // Middleware para verificar conexão MongoDB
 const checkMongoConnection = (req, res, next) => {
@@ -201,16 +241,12 @@ const startServer = async () => {
   try {
     // Tentar conectar ao MongoDB
     await connectDB();
-
-    // Garantir admin com senha correta
-    await ensureAdminUser();
-
+    
     // Iniciar servidor independente da conexão MongoDB
     const server = app.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Servidor rodando na porta ${PORT}`);
       console.log(`🌍 Ambiente: ${process.env.NODE_ENV || 'development'}`);
       console.log(`📡 Health check: http://localhost:${PORT}/health`);
-      console.log(`👤 Admin check: http://localhost:${PORT}/api/admin/check`);
       console.log('');
       console.log('🔐 CREDENCIAIS DE LOGIN:');
       console.log('   Usuário: admin');
