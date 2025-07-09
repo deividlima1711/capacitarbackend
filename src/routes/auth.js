@@ -7,14 +7,20 @@ const router = express.Router();
 
 // Login
 router.post('/login', async (req, res) => {
-  console.log('BODY RECEBIDO:', req.body); // DEBUG
   try {
+    console.log('📝 Tentativa de login recebida');
+    console.log('📋 Body:', req.body);
+    console.log('📍 Headers:', req.headers);
+    
     const { username, password } = req.body;
 
-    // Validação básica
+    // Validação básica mais robusta
     if (!username || !password) {
       console.log('❌ Login: Usuário ou senha não fornecidos');
-      return res.status(400).json({ error: 'Usuário e senha são obrigatórios' });
+      return res.status(400).json({ 
+        error: 'Usuário e senha são obrigatórios',
+        received: { username: !!username, password: !!password }
+      });
     }
 
     // Verificar se JWT_SECRET está configurado
@@ -26,12 +32,16 @@ router.post('/login', async (req, res) => {
     console.log(`🔍 Login: Tentativa de login para usuário: ${username}`);
 
     // Buscar usuário (case insensitive)
-    const user = await User.findOne({ username: username.toLowerCase() });
+    const user = await User.findOne({ 
+      username: { $regex: new RegExp(`^${username}$`, 'i') }
+    });
     
     if (!user) {
       console.log(`❌ Login: Usuário ${username} não encontrado`);
       return res.status(401).json({ error: 'Credenciais inválidas' });
     }
+
+    console.log(`🔍 Login: Usuário encontrado: ${user.username}`);
 
     // Verificar senha
     const isMatch = await user.comparePassword(password);
@@ -46,6 +56,8 @@ router.post('/login', async (req, res) => {
       console.log(`❌ Login: Usuário ${username} está inativo`);
       return res.status(401).json({ error: 'Usuário inativo' });
     }
+
+    console.log(`✅ Login: Usuário ${username} autenticado com sucesso`);
 
     // Atualizar último login
     user.lastLogin = new Date();
