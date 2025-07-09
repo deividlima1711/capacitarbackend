@@ -7,6 +7,7 @@ const router = express.Router();
 
 // Login
 router.post('/login', async (req, res) => {
+  console.log('BODY RECEBIDO:', req.body); // DEBUG
   try {
     const { username, password } = req.body;
 
