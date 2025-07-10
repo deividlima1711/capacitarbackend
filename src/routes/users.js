@@ -79,6 +79,7 @@ router.get('/:id', auth, async (req, res) => {
 // Criar novo usuário (apenas admin)
 router.post('/', adminAuth, async (req, res) => {
   try {
+    console.log('Recebido no backend:', req.body); // LOG TEMPORÁRIO
     const {
       username,
       password,
@@ -88,8 +89,17 @@ router.post('/', adminAuth, async (req, res) => {
       department
     } = req.body;
 
-    if (!username || !password || !name || !email) {
-      return res.status(400).json({ error: 'Campos obrigatórios: username, password, name, email' });
+    // Validação detalhada
+    const missingFields = [];
+    if (!username) missingFields.push('username');
+    if (!password) missingFields.push('password');
+    if (!name) missingFields.push('name');
+    if (!email) missingFields.push('email');
+    if (missingFields.length > 0) {
+      return res.status(400).json({
+        error: `Campos obrigatórios ausentes: ${missingFields.join(', ')}`,
+        recebido: req.body
+      });
     }
 
     // Verificar se username já existe
