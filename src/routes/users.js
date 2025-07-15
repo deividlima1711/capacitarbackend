@@ -80,7 +80,7 @@ router.get('/:id', auth, async (req, res) => {
 router.post('/', adminAuth, async (req, res) => {
   try {
     console.log('📝 Criando novo usuário');
-    console.log('📋 Body:', req.body);
+    console.log('📋 Body recebido:', JSON.stringify(req.body, null, 2));
     
     const {
       username,
@@ -91,17 +91,24 @@ router.post('/', adminAuth, async (req, res) => {
       department
     } = req.body;
 
-    // Validação mais robusta
-    if (!username || !password || !name || !email) {
-      console.log('❌ Campos obrigatórios faltando');
-      return res.status(400).json({ 
-        error: 'Campos obrigatórios: username, password, name, email',
+    // Validação detalhada e robusta
+    const missingFields = [];
+    if (!username || typeof username !== 'string' || username.trim() === '') missingFields.push('username');
+    if (!password || typeof password !== 'string' || password.trim() === '') missingFields.push('password');
+    if (!name || typeof name !== 'string' || name.trim() === '') missingFields.push('name');
+    if (!email || typeof email !== 'string' || email.trim() === '') missingFields.push('email');
+    
+    if (missingFields.length > 0) {
+      console.log('❌ Campos obrigatórios faltando:', missingFields);
+      return res.status(400).json({
+        error: `Campos obrigatórios ausentes ou inválidos: ${missingFields.join(', ')}`,
         received: {
           username: !!username,
           password: !!password,
           name: !!name,
           email: !!email
-        }
+        },
+        recebido: req.body
       });
     }
 
